@@ -1,0 +1,199 @@
+var canvas = document.getElementById("canvas")
+var ctx = canvas.getContext("2d")
+
+function onResize() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+}
+window.onresize = onResize;
+
+var settings = {
+    particles: {
+        length: 500, // 最大颗粒量
+        duration: 2, // 粒子持续时间(秒)
+        velocity: 100, // 粒子速度(像素/秒)
+        effect: -0.75, // play with this for a nice effect
+        size: 30, // 颗粒尺寸(像素)
+    },
+};
+var time,
+    particleRate = settings.particles.length / settings.particles.duration;
+class bagainPoint {
+    constructor(x, y) {
+        this.x = (typeof x !== 'undefined') ? x : 0;
+        this.y = (typeof y !== 'undefined') ? y : 0;
+    }
+    clone() {
+        return new bagainPoint(this.x, this.y)
+    }
+    length(length) {
+        if (typeof length == 'undefined')
+            return Math.sqrt(this.x * this.x + this.y * this.y);
+        this.normalize();
+        this.x *= length;
+        this.y *= length;
+        return this
+    }
+    normalize() {
+        var length = this.length();
+        this.x /= length;
+        this.y /= length;
+        return this
+    }
+}
+class Point {
+    constructor() {
+        this.x = new bagainPoint().x;
+        this.y = new bagainPoint().y;
+        this.velocitx = new bagainPoint().x;
+        this.velocity = new bagainPoint().y;
+        this.accelerationx = new bagainPoint().x;
+        this.accelerationy = new bagainPoint().y;
+        this.age = .1;
+    }
+    initialize(x, y, dx, dy) {
+        this.x = x;
+        this.y = y;
+        this.velocitx = dx;
+        this.velocity = dy;
+        this.accelerationx = dx * settings.particles.effect;
+        this.accelerationy = dy * settings.particles.effect;
+        this.age = 0.1;
+    }
+    draw() {
+        function ease(t) {
+            return (--t) * t * t + 1;
+        }
+        var size = image.width * ease(this.age / settings.particles.duration);
+        ctx.globalAlpha = 1 - this.age / settings.particles.duration;
+        ctx.drawImage(image, this.x - size / 2, this.y - size / 2, size, size);
+    }
+    updata(deltaTime) {
+        this.x += this.velocitx * deltaTime;
+        this.y += this.velocity * deltaTime;
+        this.velocitx += this.accelerationx * deltaTime;
+        this.velocity += this.accelerationy * deltaTime;
+        this.age += deltaTime;
+    }
+}
+class PointPool {
+    constructor(length) {
+        this.particles = new Array(length);
+        for (var i = 0; i < this.particles.length; i++) {
+            this.particles[i] = new Point();
+        }
+        this.firstActive = 0
+        this.firstFree = 0
+        this.duration = settings.particles.duration;
+    }
+    add(x, y, dx, dy) {
+        this.particles[this.firstFree].initialize(x, y, dx, dy);
+        // handle circular queue
+        this.firstFree++;
+        if (this.firstFree == this.particles.length) this.firstFree = 0;
+        if (this.firstActive == this.firstFree) this.firstActive++;
+        if (this.firstActive == this.particles.length) this.firstActive = 0;
+    }
+    updata(deltaTime) {
+        var i;
+
+        if (this.firstActive < this.firstFree) {
+            for (i = this.firstActive; i < this.firstFree; i++)
+                this.particles[i].updata(deltaTime);
+        }
+        if (this.firstFree < this.firstActive) {
+            for (i = this.firstActive; i < this.particles.length; i++)
+                this.particles[i].updata(deltaTime);
+            for (i = 0; i < this.firstFree; i++)
+                this.particles[i].updata(deltaTime);
+        }
+
+        while (this.particles[this.firstActive].age >= this.duration && this.firstActive != this.firstFree) {
+            this.firstActive++;
+            if (this.firstActive == this.particles.length) this.firstActive = 0;
+        }
+    }
+    draw(ctx, image) {
+        if (this.firstActive < this.firstFree) {
+            for (let i = this.firstActive; i < this.firstFree; i++)
+                this.particles[i].draw(ctx, image);
+        }
+        if (this.firstFree < this.firstActive) {
+            for (let i = this.firstActive; i < this.particles.length; i++)
+                this.particles[i].draw(ctx, image);
+            for (let i = 0; i < this.firstFree; i++)
+                this.particles[i].draw(ctx, image);
+        }
+    }
+}
+// 星星运动轨迹
+function length(dir, length) {
+    let lx = ''
+    let ly = JSON.parse(JSON.stringify(dir))
+    lx = Math.sqrt(ly.x * ly.x + ly.y * ly.y);
+    ly.x /= lx * length
+    ly.y /= lx * length
+    return ly;
+}
+//星星的XY轴关系
+function pointOnHeart(t) {
+    return new bagainPoint(
+        160 * Math.pow(Math.sin(t), 3),
+        130 * Math.cos(t) - 50 * Math.cos(2 * t) - 20 * Math.cos(3 * t) - 10 * Math.cos(4 * t) + 25
+    );
+}
+// 先画一个小星星
+var image = (function() {
+    var canvas = document.createElement('canvas'),
+        context = canvas.getContext('2d');
+    canvas.width = settings.particles.size;
+    canvas.height = settings.particles.size;
+    // Helper函数来创建路径
+    function to(t) {
+        var point = pointOnHeart(t);
+        point.x = settings.particles.size / 2 + point.x * settings.particles.size / 350;
+        point.y = settings.particles.size / 2 - point.y * settings.particles.size / 350;
+        return point;
+    }
+    // 创建路径
+    context.beginPath();
+    var t = -Math.PI;
+    var point = to(t);
+    context.moveTo(point.x, point.y);
+    while (t < Math.PI) {
+        t += 0.01; // baby steps!
+        point = to(t);
+        context.lineTo(point.x, point.y);
+    }
+    context.closePath();
+    // 创建填充
+    context.fillStyle = '#ea80b0';
+    context.fill();
+    // 创建图片
+    var image = new Image();
+    image.src = canvas.toDataURL();
+    return image;
+})()
+var particles = new PointPool(settings.particles.length)
+
+function render() {
+    requestAnimationFrame(render);
+    var newTime = new Date().getTime() / 1000,
+        deltaTime = newTime - (time || newTime);
+    time = newTime;
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    var amount = particleRate * deltaTime;
+    for (var i = 0; i < amount; i++) {
+        var pos = pointOnHeart(Math.PI - 2 * Math.PI * Math.random());
+        var dir = pos.clone().length(settings.particles.velocity);
+        particles.add(canvas.width / 2 + pos.x, canvas.height / 2 - pos.y, dir.x, -dir.y);
+    }
+    particles.updata(deltaTime);
+    particles.draw();
+}
+window.onload = function() {
+    onResize()
+    render()
+}
